@@ -28,23 +28,28 @@ const otpSchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 const OTP = mongoose.model("OTP", otpSchema);
 
-// 📧 Mail config
+// 📧 Mail config (FINAL FIXED)
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   }
 });
 
-// 🔹 health
+// 🔹 health check
 app.get("/", (req,res)=>res.send("Server Running"));
 
-// 🔥 SEND OTP (POST)
+// 🔥 SEND OTP
 app.post("/send_otp", async (req,res)=>{
   try {
     const { email } = req.body;
-    if(!email) return res.status(400).json({msg:"Email required"});
+
+    if(!email) {
+      return res.status(400).json({msg:"Email required"});
+    }
 
     const otp = Math.floor(100000 + Math.random()*900000).toString();
     const expiry = Date.now() + 5*60*1000;
@@ -63,8 +68,9 @@ app.post("/send_otp", async (req,res)=>{
     });
 
     res.json({msg:"OTP_SENT"});
+
   } catch (e) {
-    console.log("SEND OTP ERROR:", e);
+    console.log("MAIL ERROR:", e); // 🔥 important log
     res.status(500).json({msg:"ERROR_SENDING_OTP"});
   }
 });
@@ -73,7 +79,10 @@ app.post("/send_otp", async (req,res)=>{
 app.post("/verify_otp", async (req,res)=>{
   try {
     const { email, otp } = req.body;
-    if(!email || !otp) return res.status(400).json({msg:"MISSING"});
+
+    if(!email || !otp) {
+      return res.status(400).json({msg:"MISSING"});
+    }
 
     const data = await OTP.findOne({ email });
 
@@ -85,7 +94,9 @@ app.post("/verify_otp", async (req,res)=>{
     } else {
       return res.json({msg:"INVALID"});
     }
+
   } catch (e) {
+    console.log("VERIFY ERROR:", e);
     res.status(500).json({msg:"ERROR_VERIFY"});
   }
 });
@@ -105,7 +116,9 @@ app.post("/signup", async (req,res)=>{
     await User.create({ email, password: hash });
 
     res.json({msg:"SIGNED_UP"});
-  } catch {
+
+  } catch (e) {
+    console.log("SIGNUP ERROR:", e);
     res.status(500).json({msg:"ERROR_SIGNUP"});
   }
 });
@@ -119,9 +132,12 @@ app.post("/login", async (req,res)=>{
     if(!user) return res.json({msg:"NO_USER"});
 
     const ok = await bcrypt.compare(password, user.password);
+
     if(ok) res.json({msg:"LOGIN_SUCCESS"});
     else res.json({msg:"WRONG_PASSWORD"});
-  } catch {
+
+  } catch (e) {
+    console.log("LOGIN ERROR:", e);
     res.status(500).json({msg:"ERROR_LOGIN"});
   }
 });
@@ -139,7 +155,9 @@ app.post("/reset_password", async (req,res)=>{
     );
 
     res.json({msg:"PASSWORD_RESET"});
-  } catch {
+
+  } catch (e) {
+    console.log("RESET ERROR:", e);
     res.status(500).json({msg:"ERROR_RESET"});
   }
 });
