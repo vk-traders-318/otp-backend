@@ -11,7 +11,7 @@ app.use(cors());
 // 🔗 MongoDB connect
 mongoose.connect(process.env.MONGO_URI)
 .then(()=>console.log("DB Connected"))
-.catch(err=>console.log(err));
+.catch(err=>console.log("DB Error:", err));
 
 // 📦 Schemas
 const userSchema = new mongoose.Schema({
@@ -40,21 +40,21 @@ const transporter = nodemailer.createTransport({
 // 🔹 health
 app.get("/", (req,res)=>res.send("Server Running"));
 
-// 🔥 SEND OTP
-app.get("/send_otp", async (req,res)=>{
-  const { email } = req.query;
-  if(!email) return res.send("MISSING");
+// 🔥 SEND OTP (POST)
+app.post("/send_otp", async (req,res)=>{
+  try {
+    const { email } = req.body;
+    if(!email) return res.status(400).json({msg:"Email required"});
 
-  const otp = Math.floor(100000 + Math.random()*900000).toString();
-  const expiry = Date.now() + 5*60*1000;
+    const otp = Math.floor(100000 + Math.random()*900000).toString();
+    const expiry = Date.now() + 5*60*1000;
 
-  await OTP.findOneAndUpdate(
-    { email },
-    { otp, expiry },
-    { upsert: true }
-  );
+    await OTP.findOneAndUpdate(
+      { email },
+      { otp, expiry },
+      { upsert: true }
+    );
 
-  try{
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
@@ -62,70 +62,86 @@ app.get("/send_otp", async (req,res)=>{
       text: `Your OTP is: ${otp}`
     });
 
-    res.send("OTP_SENT");
-  }catch(e){
-    console.log(e);
-    res.send("MAIL_ERROR");
+    res.json({msg:"OTP_SENT"});
+  } catch (e) {
+    console.log("SEND OTP ERROR:", e);
+    res.status(500).json({msg:"ERROR_SENDING_OTP"});
   }
 });
 
 // 🔥 VERIFY OTP
-app.get("/verify_otp", async (req,res)=>{
-  const { email, otp } = req.query;
-  if(!email || !otp) return res.send("MISSING");
+app.post("/verify_otp", async (req,res)=>{
+  try {
+    const { email, otp } = req.body;
+    if(!email || !otp) return res.status(400).json({msg:"MISSING"});
 
-  const data = await OTP.findOne({ email });
+    const data = await OTP.findOne({ email });
 
-  if(!data) return res.send("INVALID");
-  if(Date.now() > data.expiry) return res.send("EXPIRED");
+    if(!data) return res.json({msg:"INVALID"});
+    if(Date.now() > data.expiry) return res.json({msg:"EXPIRED"});
 
-  if(data.otp === otp){
-    return res.send("VERIFIED");
-  } else {
-    return res.send("INVALID");
+    if(data.otp === otp){
+      return res.json({msg:"VERIFIED"});
+    } else {
+      return res.json({msg:"INVALID"});
+    }
+  } catch (e) {
+    res.status(500).json({msg:"ERROR_VERIFY"});
   }
 });
 
 // 🔥 SIGNUP
 app.post("/signup", async (req,res)=>{
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if(!email || !password) return res.send("MISSING");
+    if(!email || !password) return res.json({msg:"MISSING"});
 
-  const exist = await User.findOne({ email });
-  if(exist) return res.send("EXISTS");
+    const exist = await User.findOne({ email });
+    if(exist) return res.json({msg:"EXISTS"});
 
-  const hash = await bcrypt.hash(password,10);
+    const hash = await bcrypt.hash(password,10);
 
-  await User.create({ email, password: hash });
+    await User.create({ email, password: hash });
 
-  res.send("SIGNED_UP");
+    res.json({msg:"SIGNED_UP"});
+  } catch {
+    res.status(500).json({msg:"ERROR_SIGNUP"});
+  }
 });
 
 // 🔥 LOGIN
 app.post("/login", async (req,res)=>{
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if(!user) return res.send("NO_USER");
+    const user = await User.findOne({ email });
+    if(!user) return res.json({msg:"NO_USER"});
 
-  const ok = await bcrypt.compare(password, user.password);
-  if(ok) res.send("LOGIN_SUCCESS");
-  else res.send("WRONG_PASSWORD");
+    const ok = await bcrypt.compare(password, user.password);
+    if(ok) res.json({msg:"LOGIN_SUCCESS"});
+    else res.json({msg:"WRONG_PASSWORD"});
+  } catch {
+    res.status(500).json({msg:"ERROR_LOGIN"});
+  }
 });
 
 // 🔥 RESET PASSWORD
 app.post("/reset_password", async (req,res)=>{
-  const { email, newPassword } = req.body;
+  try {
+    const { email, newPassword } = req.body;
 
-  const hash = await bcrypt.hash(newPassword,10);
+    const hash = await bcrypt.hash(newPassword,10);
 
-  await User.updateOne(
-    { email },
-    { password: hash }
-  );
+    await User.updateOne(
+      { email },
+      { password: hash }
+    );
 
-  res.send("PASSWORD_RESET");
+    res.json({msg:"PASSWORD_RESET"});
+  } catch {
+    res.status(500).json({msg:"ERROR_RESET"});
+  }
 });
 
 const PORT = process.env.PORT || 3000;
